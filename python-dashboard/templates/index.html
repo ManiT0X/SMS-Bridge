@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - SMS Bridge{% endblock %}
+{% block page_title %}Dashboard & Telemetry{% endblock %}
+
+{% block content %}
+<!-- Top Metrics Grid -->
+<div class="stats-grid" style="
+    padding-bottom: 25px;
+">
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Gateway State</span>
+            <div class="stat-icon-wrapper">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+        </div>
+        <div class="stat-value">
+            <span class="badge badge-danger gateway-status-badge" style="font-size: 16px; padding: 6px 14px;">OFFLINE</span>
+        </div>
+        <div class="stat-subtext">
+            <span>Ping Latency:</span> <strong class="live-latency-val">-- ms</strong>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Battery Level</span>
+            <div class="stat-icon-wrapper">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            </div>
+        </div>
+        <div class="stat-value live-battery-val">--</div>
+        <div class="stat-subtext">
+            <span>Wi-Fi:</span> <strong class="live-wifi-val">--</strong>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Dispatched Messages</span>
+            <div class="stat-icon-wrapper">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path></svg>
+            </div>
+        </div>
+        <div class="stat-value" id="stat-total-sms">{{ total_sms }}</div>
+        <div class="stat-subtext">
+            <span id="stat-sent-sms" style="color:var(--success-color);">{{ sent_sms }} Sent</span> •
+            <span id="stat-failed-sms" style="color:var(--danger-color);">{{ failed_sms }} Failed</span>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Success Rate</span>
+            <div class="stat-icon-wrapper">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+        </div>
+        <div class="stat-value" id="stat-success-rate" style="color:{% if success_rate >= 90 %}var(--success-color){% elif success_rate >= 70 %}var(--warning-color){% else %}var(--danger-color){% endif %};">{{ "%.1f"|format(success_rate) }}%</div>
+        <div class="stat-subtext">
+            <span id="stat-pending-sms">{{ pending_sms }} queued / in transit</span>
+        </div>
+    </div>
+</div>
+<!-- Main Telemetry & Quick Send Grid -->
+<div class="telemetry-grid">
+    <!-- Left Column: Quick Dispatch & Latency History -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Quick SMS Dispatcher Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                    Quick SMS Dispatch
+                </h3>
+                <span class="badge badge-neutral">Instant Delivery</span>
+            </div>
+            
+            <form id="single-sms-form">
+                <div style="display: grid; grid-template-columns: 1fr 140px; gap: 14px;">
+                    <div class="form-group">
+                        <label class="form-label" for="sms-recipient">Recipient Phone Number</label>
+                        <input type="text" class="form-control" id="sms-recipient" placeholder="+1234567890" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="sms-sim-slot">SIM Slot</label>
+                        <select class="form-control" id="sms-sim-slot">
+                            <option value="0" selected>SIM 1 (Default)</option>
+                            <option value="1">SIM 2</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="sms-message">Message Text</label>
+                    <textarea class="form-control sms-message-input" id="sms-message" rows="3" placeholder="Type your message here..." required data-counter-target="#char-counter"></textarea>
+                    <div class="input-hint">
+                        <span id="char-counter">0 chars | 1 segment</span>
+                        <span>Local Wi-Fi Gateway</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+                    <button type="submit" class="btn btn-primary">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                        Send SMS
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Latency Chart Card -->
+        <div class="card" style="margin-bottom: 25px;">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                    LAN Response Latency
+                </h3>
+                <span class="code-badge">Live Trend</span>
+            </div>
+            <div style="height: 200px; width: 100%;">
+                <canvas id="latencyChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Device Hardware & Live SIM Status -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- SIM Cards Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+                    Detected SIM Slots
+                </h3>
+            </div>
+            <div id="live-sim-container">
+                {% if status.sim_slots and status.sim_slots|length > 0 %}
+                    {% for sim in status.sim_slots %}
+                    <div class="sim-card-box">
+                        <div class="sim-info">
+                            <div class="sim-icon">
+                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; font-size:14px;">SIM {{ sim.slot_index + 1 }}: {{ sim.carrier or 'Unknown Carrier' }}</div>
+                                <div style="font-size:12px; color:var(--text-muted);">Sub ID: {{ sim.subscription_id }} &bull; {{ 'Active' if sim.is_active else 'Inactive' }}</div>
+                            </div>
+                        </div>
+                        <span class="badge {% if sim.is_active %}badge-success{% else %}badge-neutral{% endif %}">{{ 'READY' if sim.is_active else 'STANDBY' }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="sim-card-box">
+                        <div class="sim-info">
+                            <div class="sim-icon">📱</div>
+                            <div>
+                                <div style="font-weight:600; font-size:14px;">Cellular Radio</div>
+                                <div style="font-size:12px; color:var(--text-muted);">Connecting to Android Gateway...</div>
+                            </div>
+                        </div>
+                        <span class="badge badge-neutral">STANDBY</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Device Info Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    Gateway Node Specs
+                </h3>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+                <div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--border-color); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary);">Device Model:</span>
+                    <strong>{{ status.device_model or 'Android Gateway Phone' }}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--border-color); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary);">Local IP Address:</span>
+                    <span class="code-badge">{{ config.ip_address }}:{{ config.port }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--border-color); padding-bottom:8px;">
+                    <span style="color:var(--text-secondary);">Embedded Server:</span>
+                    <span>NanoHTTPD (Port 8080)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="color:var(--text-secondary);">Auth Security:</span>
+                    <span class="badge {% if config.auth_enabled %}badge-warning{% else %}badge-neutral{% endif %}">
+                        {{ 'BEARER TOKEN' if config.auth_enabled else 'OPEN / NO AUTH' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Dispatch Activity Table -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Recent Dispatches
+        </h3>
+        <a href="{{ url_for('logs') }}" class="btn btn-secondary btn-sm">View All Logs</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Recipient</th>
+                    <th>Message</th>
+                    <th>SIM</th>
+                    <th>Segments</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody id="recent-dispatches-body">
+                {% if recent_logs and recent_logs|length > 0 %}
+                    {% for log in recent_logs %}
+                    <tr>
+                        <td><strong>{{ log.recipient }}</strong></td>
+                        <td style="max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ log.message }}</td>
+                        <td><span class="code-badge">SIM {{ log.sim_slot + 1 }}</span></td>
+                        <td>{{ log.parts_count }}</td>
+                        <td>
+                            {% if log.status == 'DELIVERED' %}
+                                <span class="badge badge-delivered">DELIVERED</span>
+                            {% elif log.status == 'SENT' %}
+                                <span class="badge badge-sent">SENT</span>
+                            {% elif log.status in ['NOT_SENT', 'FAILED'] %}
+                                <span class="badge badge-notsent" title="{{ log.error_message or '' }}">NOT SENT</span>
+                            {% else %}
+                                <span class="badge badge-pending">{{ log.status }}</span>
+                            {% endif %}
+                            {% if log.error_message and log.status in ['NOT_SENT', 'FAILED'] %}
+                                <div style="font-size: 11px; color: var(--danger-color); margin-top: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ log.error_message }}">{{ log.error_message }}</div>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.latency_ms or 0 }} ms</td>
+                        <td style="color:var(--text-muted); font-size:12px;">{{ log.created_at.strftime('%H:%M:%S') if log.created_at else '' }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 28px;">
+                            No SMS dispatched yet. Try sending your first message using the composer above!
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

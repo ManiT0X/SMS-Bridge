@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block title %}Gateway & API Settings - SMS Bridge{% endblock %}
+{% block page_title %}Gateway Connection & API Integration{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <!-- Connection & Phone Gateway Config -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                Android Gateway Pairing
+            </h3>
+            <span class="badge badge-primary">LAN Link</span>
+        </div>
+
+        <form id="settings-form" onsubmit="saveGatewaySettings(event)">
+            <div class="form-group">
+                <label class="form-label" for="cfg-name">Device Nickname</label>
+                <input type="text" class="form-control" id="cfg-name" value="{{ config.device_name }}">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label" for="cfg-ip">Phone Local IP Address</label>
+                    <input type="text" class="form-control" id="cfg-ip" value="{{ config.ip_address }}" required placeholder="192.168.1.100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cfg-port">HTTP Port</label>
+                    <input type="number" class="form-control" id="cfg-port" value="{{ config.port }}" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="cfg-api-key">API Key / Token (Optional)</label>
+                <input type="password" class="form-control" id="cfg-api-key" value="{{ config.api_key }}" placeholder="Leave blank if disabled">
+            </div>
+
+            <div class="form-check" style="margin-top: 8px;">
+                <input type="checkbox" id="cfg-auth-enabled" {% if config.auth_enabled %}checked{% endif %}>
+                <label for="cfg-auth-enabled">Require Bearer API Key Authentication on Phone Gateway</label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                <div class="form-group">
+                    <label class="form-label" for="cfg-sim-slot">Default SIM Slot</label>
+                    <select class="form-control" id="cfg-sim-slot">
+                        <option value="0" {% if config.default_sim_slot == 0 %}selected{% endif %}>SIM Slot 1</option>
+                        <option value="1" {% if config.default_sim_slot == 1 %}selected{% endif %}>SIM Slot 2</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cfg-poll-interval">Health Polling Interval</label>
+                    <select class="form-control" id="cfg-poll-interval">
+                        <option value="3" {% if config.poll_interval_sec == 3 %}selected{% endif %}>3 Seconds</option>
+                        <option value="5" {% if config.poll_interval_sec == 5 %}selected{% endif %}>5 Seconds (Default)</option>
+                        <option value="10" {% if config.poll_interval_sec == 10 %}selected{% endif %}>10 Seconds</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-check">
+                <input type="checkbox" id="cfg-sync-phone">
+                <label for="cfg-sync-phone">Push updated security settings to remote Android app on save</label>
+            </div>
+
+            <!-- Test Connection Result Box -->
+            <div id="test-conn-result" style="display: none; padding: 12px; border-radius: 8px; font-size: 13px; background: rgba(0,0,0,0.3); margin-bottom: 16px;"></div>
+
+            <div style="display: flex; gap: 12px; margin-top: 18px;">
+                <button type="button" id="btn-test-conn" class="btn btn-secondary" onclick="testPhoneConnection()">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Test Connection
+                </button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">
+                    Save Configuration
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- REST API Integration Documentation -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                Developer REST API
+            </h3>
+            <span class="badge badge-success">Port 8080 / 5000</span>
+        </div>
+
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+            You can dispatch SMS directly to the Android phone (<code>{{ config.base_url }}</code>) or through this dashboard proxy (<code>http://127.0.0.1:5000/api/send</code>).
+        </p>
+
+        <!-- cURL Example -->
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: #818cf8; margin-bottom: 6px;">cURL (Direct Phone Gateway)</div>
+            <div class="code-box">
+                <button class="btn btn-secondary copy-btn" onclick="copyCode(this)">Copy</button>
+                <pre><code>curl -X POST "{{ config.base_url }}/send-sms" \
+  -H "Content-Type: application/json" \
+  {% if config.auth_enabled %}-H "Authorization: Bearer {{ config.api_key }}" \{% endif %}
+  -d '{
+    "to": "+1234567890",
+    "message": "Hello from SMS Bridge API!",
+    "sim_slot": {{ config.default_sim_slot }}
+  }'</code></pre>
+            </div>
+        </div>
+
+        <!-- Python Example -->
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 12px; font-weight: 600; color: #818cf8; margin-bottom: 6px;">Python (requests)</div>
+            <div class="code-box">
+                <button class="btn btn-secondary copy-btn" onclick="copyCode(this)">Copy</button>
+                <pre><code>import requests
+
+res = requests.post(
+    "{{ config.base_url }}/send-sms",
+    json={"to": "+1234567890", "message": "Verification code: 849201", "sim_slot": 0}{% if config.auth_enabled %},
+    headers={"Authorization": "Bearer {{ config.api_key }}"}{% endif %}
+)
+print(res.json())</code></pre>
+            </div>
+        </div>
+
+        <!-- Node.js / Fetch Example -->
+        <div>
+            <div style="font-size: 12px; font-weight: 600; color: #818cf8; margin-bottom: 6px;">JavaScript (Fetch)</div>
+            <div class="code-box">
+                <button class="btn btn-secondary copy-btn" onclick="copyCode(this)">Copy</button>
+                <pre><code>fetch('{{ config.base_url }}/send-sms', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'{% if config.auth_enabled %},
+    'Authorization': 'Bearer {{ config.api_key }}'{% endif %}
+  },
+  body: JSON.stringify({ to: '+1234567890', message: 'Order #1042 confirmed!' })
+}).then(r => r.json()).then(console.log);</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+
+{% block title %}SMS Logs - SMS Bridge{% endblock %}
+{% block page_title %}SMS Delivery Logs{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header" style="flex-wrap: wrap; gap: 14px;">
+        <h3 class="card-title">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            Transmission History
+        </h3>
+
+        <!-- Search & Filter Controls (AJAX Real-Time, No Full Page Reload) -->
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="position: relative;">
+                <input type="text" id="logs-search-input" class="form-control" style="width: 230px; padding: 7px 12px; font-size: 13px;" placeholder="Search recipient, msg, ID..." value="{{ search_query }}">
+            </div>
+            
+            <select id="logs-status-filter" class="form-control" style="width: 140px; padding: 7px 12px; font-size: 13px;">
+                <option value="ALL" {% if status_filter == 'ALL' %}selected{% endif %}>All Status</option>
+                <option value="DELIVERED" {% if status_filter == 'DELIVERED' %}selected{% endif %}>Delivered</option>
+                <option value="SENT" {% if status_filter == 'SENT' %}selected{% endif %}>Sent</option>
+                <option value="NOT_SENT" {% if status_filter == 'NOT_SENT' %}selected{% endif %}>Not Sent</option>
+                <option value="FAILED" {% if status_filter == 'FAILED' %}selected{% endif %}>Failed</option>
+                <option value="PENDING" {% if status_filter == 'PENDING' %}selected{% endif %}>Pending</option>
+            </select>
+
+            <a href="{{ url_for('export_logs', format='csv') }}" class="btn btn-secondary btn-sm" title="Export as CSV">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export CSV
+            </a>
+
+            <button type="button" class="btn btn-danger btn-sm" onclick="clearAllLogs()">Clear All</button>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-responsive">
+        <table class="table" id="delivery-logs-table">
+            <thead>
+                <tr>
+                    <th class="sortable" data-sort="tracking_id">
+                        Tracking ID <span class="sort-icon" id="sort-icon-tracking_id">↕</span>
+                    </th>
+                    <th class="sortable" data-sort="recipient">
+                        Recipient <span class="sort-icon" id="sort-icon-recipient">↕</span>
+                    </th>
+                    <th class="sortable" data-sort="message">
+                        Message <span class="sort-icon" id="sort-icon-message">↕</span>
+                    </th>
+                    <th class="sortable" data-sort="sim_slot">
+                        SIM <span class="sort-icon" id="sort-icon-sim_slot">↕</span>
+                    </th>
+                    <th class="sortable" data-sort="status">
+                        Status <span class="sort-icon" id="sort-icon-status">↕</span>
+                    </th>
+                    <th class="sortable" data-sort="latency_ms">
+                        Latency <span class="sort-icon" id="sort-icon-latency_ms">↕</span>
+                    </th>
+                    <th class="sortable sorted-desc" data-sort="created_at">
+                        Timestamp <span class="sort-icon" id="sort-icon-created_at">▼</span>
+                    </th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="logs-table-body">
+                {% if pagination.items and pagination.items|length > 0 %}
+                    {% for log in pagination.items %}
+                    <tr>
+                        <td><span class="code-badge">{{ log.tracking_id }}</span></td>
+                        <td><strong>{{ log.recipient }}</strong></td>
+                        <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ log.message }}">
+                            {{ log.message }}
+                        </td>
+                        <td><span class="code-badge">SIM {{ log.sim_slot + 1 }}</span></td>
+                        <td>
+                            {% if log.status == 'DELIVERED' %}
+                                <span class="badge badge-delivered">DELIVERED</span>
+                            {% elif log.status == 'SENT' %}
+                                <span class="badge badge-sent">SENT</span>
+                            {% elif log.status in ['NOT_SENT', 'FAILED'] %}
+                                <span class="badge badge-notsent" title="{{ log.error_message or '' }}">NOT SENT</span>
+                            {% else %}
+                                <span class="badge badge-pending">{{ log.status }}</span>
+                            {% endif %}
+                            {% if log.error_message and log.status in ['NOT_SENT', 'FAILED'] %}
+                                <div style="font-size: 11px; color: var(--danger-color); margin-top: 4px; max-width: 180px; overflow:hidden; text-overflow:ellipsis;" title="{{ log.error_message }}">
+                                    {{ log.error_message }}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.latency_ms or 0 }} ms</td>
+                        <td style="color:var(--text-muted); font-size:12px;">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}
+                        </td>
+                        <td>
+                            {% if log.status in ['FAILED', 'NOT_SENT'] %}
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="retrySms({{ log.id }})">
+                                    Retry
+                                </button>
+                            {% else %}
+                                <span style="color: var(--text-muted); font-size: 12px;">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 36px;">
+                            No SMS records found matching current query.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Controls (AJAX driven) -->
+    <div id="logs-pagination-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border-color);">
+        <span id="logs-page-info" style="font-size: 12px; color: var(--text-secondary);">
+            Page {{ pagination.page }} of {{ pagination.pages or 1 }} (Total {{ pagination.total }} messages)
+        </span>
+        <div id="logs-pagination-buttons" style="display: flex; gap: 8px;">
+            {% if pagination.has_prev %}
+                <button type="button" class="btn btn-secondary btn-sm" onclick="loadLogsPage({{ pagination.prev_num }})">&laquo; Prev</button>
+            {% endif %}
+            {% if pagination.has_next %}
+                <button type="button" class="btn btn-secondary btn-sm" onclick="loadLogsPage({{ pagination.next_num }})">Next &raquo;</button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
